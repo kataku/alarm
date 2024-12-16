@@ -1,0 +1,11 @@
+[Unit]
+ Description=alarm
+
+[Service]
+ User=root
+ WorkingDirectory=/opt/alarm
+ ExecStart=/usr/bin/python3 /opt/alarm/main.py
+ Restart=always
+
+[Install]
+ WantedBy=multi-user.target
