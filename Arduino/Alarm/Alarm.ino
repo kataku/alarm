@@ -18,6 +18,7 @@ int valuesKnown = 0;
 
 unsigned long time_sent[valuesKnowable];
 unsigned long value_sent[valuesKnowable];
+unsigned long since_reconnect = 0;
 
 RCSwitch mySwitch = RCSwitch();
 WiFiClient wifiClient;
@@ -43,19 +44,13 @@ void initMQTT(){
   Serial.println(broker);
   mqttClient.setUsernamePassword(mq_user, mq_pass);
   mqttClient.setId(mq_topic);
-
+  
+  mqttClient.connect(broker, port);
+  Serial.print("Connecting to MQTT ..");
   while (!mqttClient.connected()) {
-    if (!mqttClient.connect(broker, port)) {
-      Serial.print("MQTT connection failed! Error code = ");
-      Serial.println(mqttClient.connectError());          
-      delay(1000);
-    }else{
-      Serial.println("You're connected to the MQTT broker!");
-      Serial.println();
-    }
-    
+     // Wait for MQTT
   }
-
+  Serial.println("Connected.");
 }
 
 void setup() {
@@ -76,18 +71,28 @@ void setup() {
    
 }
 
-void loop() {
-  
+void check_services(){
   //recheck wifi
   if (WiFi.status() != WL_CONNECTED){
     Serial.println(WiFi.status());
     initWiFi();
   }
   //recheck MQTT
-  if (!mqttClient.connected()){
-    initMQTT();
+  //this always returns 0 even when connected if this every does work we'll use it
+  if (mqttClient.connected()){
+    since_reconnect = millis();
   }
-  
+  if (millis() - since_reconnect > 60000){
+    //reconnect to MQTT every 60 seconds because .connected() doesn't work. if this every does work we'll use it above
+    initMQTT();
+    since_reconnect = millis();
+  }
+}
+
+void loop() {
+
+  check_services();
+
   // call poll() regularly to allow the library to send MQTT keep alive which
   // avoids being disconnected by the broker
   mqttClient.poll();
@@ -115,14 +120,29 @@ void loop() {
 
     //the sensors send 10 repeats, we're gonna smooth that. 
     if (since > 3000){
-      
-      mqttClient.beginMessage(mq_topic);
-      mqttClient.print(triggering_value);
-      mqttClient.endMessage();
-
-      sentValue(triggering_value,millis());
+      //trigger the send and catch failure
+      if (!mqtt_send(triggering_value)){
+        Serial.println("MQTT Send Failed");
+        //recheck wifi and MQTT
+        since_reconnect = 0;
+        check_services();
+        //try again but if this fails we give up
+        mqtt_send(triggering_value);
+      }      
     }
     mySwitch.resetAvailable();
+  }
+}
+
+boolean mqtt_send(unsigned long message){
+  if(mqttClient.beginMessage(mq_topic)){
+    mqttClient.print(message);
+    mqttClient.endMessage();
+    Serial.println("message sent");    
+    sentValue(message,millis());
+    return true;
+  }else{
+    return false;
   }
 }
 
