@@ -77,13 +77,12 @@ void check_services(){
     Serial.println(WiFi.status());
     initWiFi();
   }
-  //recheck MQTT
-  //this always returns 0 even when connected if this every does work we'll use it
+  //recheck MQTT - this sometimes says false when its true  
   if (mqttClient.connected()){
-    since_reconnect = millis();
+    since_reconnect = millis();    
   }
   if (millis() - since_reconnect > 60000){
-    //reconnect to MQTT every 60 seconds because .connected() doesn't work. if this every does work we'll use it above
+    //try to reconnect to MQTT every 60 seconds if connected returns false
     initMQTT();
     since_reconnect = millis();
   }
