@@ -1,0 +1,33 @@
+{
+    "username":"mqtt user",
+    "password":"mqttpassword",    
+    "server":"IP or hostname",
+    "topics":["alarm/reciever_1","alarm/reciever_2"],
+    "log":"./alarm.",
+    "smtp_server":"smtp.gmail.com",
+    "smtp_port":587,
+    "smtp_username":"",
+    "smtp_password":"",
+    "seconds_before_rearm":3600,
+    "people":[
+        {
+            "name":"",
+            "ip":"",
+            "phone":"",
+            "send_text":true,
+            "email":"",
+            "send_email":true
+        },
+        {
+            "name":"",
+            "ip":"",
+            "phone":"",
+            "send_text":true,
+            "email":"",
+            "send_email":true
+        }
+        ],
+    "Sensors":[
+        {"id":"123456789","name":"Test Sensor"}
+    ]
+}
