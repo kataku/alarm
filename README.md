@@ -6,6 +6,17 @@
 This project is for one or more ESP32 with a 433Mhz radio reciever which publishes messages from sensors to an MQTT server
 A python service then consumes messages and sends notifications when no-ones phone is on the network, i.e you're not home.
 
+## Thingiverse
+
+Cases for the ESP32(USB-C) and Reciever Board:
+https://www.thingiverse.com/thing:6879482
+https://www.thingiverse.com/thing:6879572
+
+You wanna cable between pins
+Reciever Data - ESP32 D27
+Reciever +5V - ESP32 vin
+Reciever GND - ESP32 gnd
+
 ## Prerequisites
 
 Programming Language -
