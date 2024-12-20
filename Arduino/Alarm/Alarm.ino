@@ -1,4 +1,5 @@
-#include <ArduinoMqttClient.h>
+//#include <ArduinoMqttClient.h>
+#include <PubSubClient.h>
 #include <WiFi.h>
 #include "arduino_secrets.h"
 #include <RCSwitch.h>
@@ -19,10 +20,14 @@ int valuesKnown = 0;
 unsigned long time_sent[valuesKnowable];
 unsigned long value_sent[valuesKnowable];
 unsigned long since_reconnect = 0;
+unsigned long reset_after = 86400000; //24hrs in millis
 
 RCSwitch mySwitch = RCSwitch();
 WiFiClient wifiClient;
-MqttClient mqttClient(wifiClient);
+//MqttClient mqttClient(wifiClient);
+PubSubClient mqttClient(wifiClient);
+
+void(* resetFunc) (void) = 0; //declare reset function @ address 0
 
 void initWiFi() {
   
@@ -42,15 +47,25 @@ void initWiFi() {
 void initMQTT(){
   Serial.print("Attempting to connect to the MQTT broker: ");
   Serial.println(broker);
-  mqttClient.setUsernamePassword(mq_user, mq_pass);
-  mqttClient.setId(mq_topic);
-  
-  mqttClient.connect(broker, port);
-  Serial.print("Connecting to MQTT ..");
-  while (!mqttClient.connected()) {
-     // Wait for MQTT
-  }
-  Serial.println("Connected.");
+
+  mqttClient.setServer(broker, port);
+
+  while (mqttClient.connected()==false) {
+      Serial.print("Attempting to connect to the MQTT broker: ");
+      Serial.println(broker);
+ 
+    //client id, user, pass, NULL,NULL,NULL,NULL,false
+    if (!mqttClient.connect(mq_topic,mq_user,mq_pass,NULL,NULL,NULL,NULL,false)) {
+      Serial.print("MQTT connection failed! Error code = ");
+      Serial.println(mqttClient.state());
+      Serial.print("failed, rc=");
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    } else {
+      Serial.println("Connected to the MQTT broker!");            
+    }    
+  }//end while  
+
 }
 
 void setup() {
@@ -77,7 +92,7 @@ void check_services(){
     Serial.println(WiFi.status());
     initWiFi();
   }
-  //recheck MQTT - this sometimes says false when its true  
+  //recheck MQTT - this sometimes says false when its true (switched lib to avoid issue but keeping this logic as a failover) 
   if (mqttClient.connected()){
     since_reconnect = millis();    
   }
@@ -90,11 +105,16 @@ void check_services(){
 
 void loop() {
 
+  if (millis() > reset_after){ //default to once a day, found that sometimes they just get stuck and this is a naff but effective fix.
+    Serial.println("resetting");
+    resetFunc();  //call reset
+  }
+
   check_services();
 
-  // call poll() regularly to allow the library to send MQTT keep alive which
+  // call poll() regularly to allow the library to send MQTT keep alives which
   // avoids being disconnected by the broker
-  mqttClient.poll();
+  mqttClient.loop(); //call loop
 
   // call poll() regularly to allow the library to receive MQTT messages and
   // send MQTT keep alive which avoids being disconnected by the broker
@@ -133,10 +153,15 @@ void loop() {
   }
 }
 
+char* num_to_char(unsigned long number) {  
+  char* char_type = new char[(((sizeof number) * CHAR_BIT) + 2)/3 + 2];
+  sprintf(char_type, "%d", number);
+  return char_type;
+}
+
 boolean mqtt_send(unsigned long message){
-  if(mqttClient.beginMessage(mq_topic)){
-    mqttClient.print(message);
-    mqttClient.endMessage();
+  
+  if(mqttClient.publish(mq_topic,num_to_char(message))){
     Serial.println("message sent");    
     sentValue(message,millis());
     return true;
