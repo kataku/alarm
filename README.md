@@ -48,6 +48,8 @@ if you change anything:
 sudo systemctl stop alarm.service
 sudo systemctl start alarm.service
 
+Enable 2FA then go here to setup App Credentials: https://myaccount.google.com/apppasswords
+
 ```
 
 ## Usage
