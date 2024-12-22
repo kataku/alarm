@@ -12,8 +12,6 @@ from email.mime.multipart import MIMEMultipart
 #-------------------------------------------------------------------------------------
 # FUNCTION DEFINITIONS
 #-------------------------------------------------------------------------------------
-notified_last = 0.0
-
 def log_and_print(message):
     print(message)
     if ("log" in c):
@@ -83,7 +81,7 @@ def email_helper(sender_email, receiver_email, subject, message, smtp_server, sm
 
 def send_email(email_address,subject,message):
     # Creating all the parameters
-    sender_email = email_address
+    sender_email = c['smtp_sender_email']
     receiver_email = email_address
     #we can setup a throw away gmail and set insecure apps ON for this
     smtp_server = c['smtp_server']
@@ -115,7 +113,7 @@ def send_text(phone_number,message):
             
     call = 'adb shell service call isms 7 i32 1 s16 "com.android.mms" s16 "'+phone_number+'" s16 "null" s16 \''+message+'\' s16 "null" s16 "null"'
     print(call)
-    #subprocess.call(call,shell=True)
+    subprocess.call(call,shell=True)
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, reason_code, properties):
@@ -149,35 +147,25 @@ def on_message(client, userdata, msg):
 
     log_and_print("Message:\r\n" + message)
     
-    #for person in c["people"]:
-    #    if (person["send_email"]):
-    #        log_and_print("sending email to "+person["email"])
-    #        send_email(person["email"],'Home Alarm System - Sensor Triggered',message)
-    
-    since = int(time.time()-notified_last)
-
-    if (since > c['seconds_before_rearm'] ):
-        print("fake notification")
-        notified_last = time.time()
-    else:
-        log_and_print("we notified "+str(since)+" seconds ago, we rearm in "+str(c['seconds_before_rearm']-since)+" seconds")
-
-    if (len(home)==0 and 1==0):
+    if (len(home)==0):
         since = int(time.time()-notified_last)
         if (since > c['seconds_before_rearm'] ):
+
+            log_and_print("No-ones home, notifying about sensor:")
+            log_and_print("since last notification = " + str(since))
             notified_last = time.time()
-            log_and_print("notified_last = " + str(notified_last))
+
             for person in c["people"]:
 
                 if (person["send_email"]):
-                    log_and_print("sending email to "+person["email"])
+                    log_and_print("sending email to "+person["name"] + " at " + person["email"])
                     send_email(person["email"],'Home Alarm System - Sensor Triggered',message)
 
                 if (person["send_text"]):
-                    log_and_print("sending text to: "+person["phone"])
+                    log_and_print("sending text to "+ person["name"] + " at " + person["phone"])
                     send_text(person["phone"],message.replace("\r\n"," | "))
         else:
-            log_and_print("we notified "+str(since)+" seconds ago, we rearm in "+str(c['seconds_before_rearm']-since)+" seconds")
+            log_and_print("No-ones home but we notified "+str(since)+" seconds ago, we rearm in "+str(c['seconds_before_rearm']-since)+" seconds")
    
 #-------------------------------------------------------------------------------------
 # EXECUTION BEGINS HERE
@@ -194,6 +182,10 @@ mqttc.on_message = on_message
 mqttc.username_pw_set(username=c["username"],password=c["password"])
 log_and_print("Connecting...")
 mqttc.connect(c["server"], 1883, 60)
+
+notified_last = -c['seconds_before_rearm']
+
+print(notified_last)
 
 # Blocking call that processes network traffic, dispatches callbacks and
 # handles reconnecting.
