@@ -14,6 +14,7 @@ from email.mime.multipart import MIMEMultipart
 #-------------------------------------------------------------------------------------
 def log_and_print(message):
     print(message)
+    mqttc.publish("alarm/log",str(message))
     if ("log" in c):
         log_file = open(c['log']+f"{datetime.datetime.now():%Y-%m-%d}"+".log","a")
         log_file.write(f"{datetime.datetime.now():%Y-%m-%d}" + " | " + str(datetime.datetime.now().time()) + ": " + message+"\r\n")
