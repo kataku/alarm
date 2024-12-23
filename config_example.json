@@ -4,27 +4,30 @@
     "server":"IP or hostname",
     "topics":["alarm/reciever_1","alarm/reciever_2"],
     "log":"./alarm.",
+    "homelog":"./home.",
     "smtp_server":"smtp.gmail.com",
     "smtp_port":587,
-    "smtp_username":"",
-    "smtp_password":"",
+    "smtp_username":"system@example.com",
+    "smtp_password":"password",
     "seconds_before_rearm":3600,
     "people":[
         {
-            "name":"",
-            "ip":"",
-            "phone":"",
+            "name":"John",
+            "ip":"1.2.3.4",
+            "phone":"1234567890",
             "send_text":true,
-            "email":"",
-            "send_email":true
+            "email":"John@example.com",
+            "send_email":true,
+            "notify_if_home":["Doe"]
         },
         {
-            "name":"",
-            "ip":"",
-            "phone":"",
+            "name":"Doe",
+            "ip":"1.2.3.4",
+            "phone":"1234567890",
             "send_text":true,
-            "email":"",
-            "send_email":true
+            "email":"Doe@example.com",
+            "send_email":true,
+            "notify_if_home":["John"]
         }
         ],
     "Sensors":[

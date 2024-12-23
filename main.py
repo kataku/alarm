@@ -34,18 +34,22 @@ def are_we_home():
         name = person["name"]
         ip = person["ip"]
 
-        log_and_print("Looking for "+name)
-        if ("Linux" in str(platform.system())):
-            response =  str(subprocess.Popen(['ping', '-c 2', ip], stdout=subprocess.PIPE).communicate()[0])
-        else:
-            response = str(check_output(f"ping -n 2 {ip}"))
+        try:
+            log_and_print("Looking for "+name)
+            if ("Linux" in str(platform.system())):
+                response =  str(subprocess.Popen(['ping', '-c 2', ip], stdout=subprocess.PIPE).communicate()[0])
+            else:
+                response = str(check_output(f"ping -n 2 {ip}"))
 
-        if "Destination host unreachable" in response or "0 received" in response or 'Request timed out.' in response:
-            #log_and_print(f"DOWN {ip} Ping Unsuccessful, Host is DOWN.")
+            if "Destination host unreachable" in response or "0 received" in response or 'Request timed out.' in response:
+                #log_and_print(f"DOWN {ip} Ping Unsuccessful, Host is DOWN.")
+                not_home.add(name)
+            else:
+                #log_and_print(f"UP {ip} Ping Successful, Host is UP!")
+                home.add(name)
+        except:
+            log_and_print("Ping for " + name + " failed, which we count as not on network")
             not_home.add(name)
-        else:
-            #log_and_print(f"UP {ip} Ping Successful, Host is UP!")
-            home.add(name)
 
     return home, not_home
 
@@ -110,10 +114,13 @@ def send_text(phone_number,message):
     message=message.replace('`','\\`')
     message=message.replace('%','\\%')
     message=message.replace('¬','\\¬')
-            
-    call = 'adb shell service call isms 7 i32 1 s16 "com.android.mms" s16 "'+phone_number+'" s16 "null" s16 \''+message+'\' s16 "null" s16 "null"'
-    print(call)
-    subprocess.call(call,shell=True)
+
+    try:
+        call = 'adb shell service call isms 7 i32 1 s16 "com.android.mms" s16 "'+phone_number+'" s16 "null" s16 \''+message+'\' s16 "null" s16 "null"'
+        print(call)
+        subprocess.call(call,shell=True)
+    except:
+        log_and_print("text send to " +phone_number+ " failed")
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, reason_code, properties):

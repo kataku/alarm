@@ -1,0 +1,11 @@
+[Unit]
+ Description=homenow
+
+[Service]
+ User=root
+ WorkingDirectory=/opt/alarm
+ ExecStart=/usr/bin/python3 /opt/alarm/homenow.py
+ Restart=always
+
+[Install]
+ WantedBy=multi-user.target
