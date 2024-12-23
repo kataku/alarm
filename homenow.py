@@ -14,16 +14,10 @@ from email.mime.multipart import MIMEMultipart
 #-------------------------------------------------------------------------------------
 def log_and_print(message):
     print(message)
-    if ("log" in c):
-        log_file = open(c['log']+f"{datetime.datetime.now():%Y-%m-%d}"+".log","a")
+    if ("homelog" in c):
+        log_file = open(c['homelog']+f"{datetime.datetime.now():%Y-%m-%d}"+".log","a")
         log_file.write(f"{datetime.datetime.now():%Y-%m-%d}" + " | " + str(datetime.datetime.now().time()) + ": " + message+"\r\n")
         log_file.close()
-
-def get_friendly_sensor_name(id):
-    for sensor in c["Sensors"]:
-        if (sensor['id']==id):
-            return sensor['name']
-    return id.replace("b'","").replace("'","")
 
 def are_we_home():
 
@@ -33,9 +27,8 @@ def are_we_home():
     for person in c["people"]:
         name = person["name"]
         ip = person["ip"]
-
         try:
-            log_and_print("Looking for "+name)
+            print("Looking for "+name)
             if ("Linux" in str(platform.system())):
                 response =  str(subprocess.Popen(['ping', '-c 2', ip], stdout=subprocess.PIPE).communicate()[0])
             else:
@@ -50,7 +43,7 @@ def are_we_home():
         except:
             log_and_print("Ping for " + name + " failed, which we count as not on network")
             not_home.add(name)
-
+        
     return home, not_home
 
 def email_helper(sender_email, receiver_email, subject, message, smtp_server, smtp_port, smtp_username, smtp_password):
@@ -114,8 +107,8 @@ def send_text(phone_number,message):
     message=message.replace('`','\\`')
     message=message.replace('%','\\%')
     message=message.replace('¬','\\¬')
-
-    try:
+            
+    try:        
         call = 'adb shell service call isms 7 i32 1 s16 "com.android.mms" s16 "'+phone_number+'" s16 "null" s16 \''+message+'\' s16 "null" s16 "null"'
         print(call)
         subprocess.call(call,shell=True)
@@ -127,53 +120,24 @@ def on_connect(client, userdata, flags, reason_code, properties):
     log_and_print(f"Connected with result code {reason_code}")
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
-    for topic in c["topics"]:
-        client.subscribe(topic)
 
-# The callback for when a PUBLISH message is received from the server.
-def on_message(client, userdata, msg):
-    
-    global notified_last
-
-    sensor_id = str(msg.payload).replace("b'","").replace("'","")
-    sensor_name = get_friendly_sensor_name(sensor_id)
-
-    if (sensor_id==sensor_name):
-        log_and_print(sensor_id + " is not a registered sensor")
-        return
-    
-    log_and_print(msg.topic+" detected "+ sensor_name)
-    home,not_home = are_we_home()
-
-    message = "Source: " + msg.topic
-    message += "\r\nSensor: "+ sensor_name
-    message += "\r\nhome: "+str(home)
-    message += "\r\nnot_home: "+str(not_home)
-    message += "\r\ndate: "+f"{datetime.datetime.now():%Y-%m-%d}"
-    message += "\r\ntime: "+str(datetime.datetime.now().time())
-
-    log_and_print("Message:\r\n" + message)
-    
+def update_people():
+    global noones_home
+        
     if (len(home)==0):
-        since = int(time.time()-notified_last)
-        if (since > c['seconds_before_rearm'] ):
+        if (not noones_home):
+            log_and_print("No-one is Home")
+            mqttc.publish("alarm/homenow","No-one is Home")
+        noones_home = True
+    else:        
+        noones_home = False
 
-            log_and_print("No-ones home, notifying about sensor:")
-            log_and_print("since last notification = " + str(since))
-            notified_last = time.time()
-
-            for person in c["people"]:
-
-                if (person["send_email"]):
-                    log_and_print("sending email to "+person["name"] + " at " + person["email"])
-                    send_email(person["email"],'Home Alarm System - Sensor Triggered',message)
-
-                if (person["send_text"]):
-                    log_and_print("sending text to "+ person["name"] + " at " + person["phone"])
-                    send_text(person["phone"],message.replace("\r\n"," | "))
+    for person in c["people"]:
+        if (person["name"] in home):
+            person["home"] = True
         else:
-            log_and_print("No-ones home but we notified "+str(since)+" seconds ago, we rearm in "+str(c['seconds_before_rearm']-since)+" seconds")
-   
+            person["home"] = False
+
 #-------------------------------------------------------------------------------------
 # EXECUTION BEGINS HERE
 #-------------------------------------------------------------------------------------
@@ -184,18 +148,44 @@ with open('config.json') as json_data:
 
 mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 mqttc.on_connect = on_connect
-mqttc.on_message = on_message
 
 mqttc.username_pw_set(username=c["username"],password=c["password"])
 log_and_print("Connecting...")
 mqttc.connect(c["server"], 1883, 60)
 
-notified_last = -c['seconds_before_rearm']
+#set initial state
+home,not_home = are_we_home()
+noones_home=False
+update_people()
 
-print(notified_last)
+while(1):
 
-# Blocking call that processes network traffic, dispatches callbacks and
-# handles reconnecting.
-# Other loop*() functions are available that give a threaded interface and a
-# manual interface.
-mqttc.loop_forever()
+    #check for phones by ip
+    home,not_home = are_we_home()
+    mqttc.publish("alarm/homenow",str(home))
+    print("home = "+str(home))
+
+    #react to any changes
+    for person in c["people"]:
+        if (person["name"] in home and noones_home):
+
+            message = person["name"] + ' is home'
+            message += "\r\nhome: "+str(home)
+            message += "\r\nnot_home: "+str(not_home)
+            message += "\r\ndate: "+f"{datetime.datetime.now():%Y-%m-%d}"
+            message += "\r\ntime: "+str(datetime.datetime.now().time())
+
+            log_and_print("Message:\r\n" + message)
+
+            #noone was home now this person is! Do we need to tell anyone?
+            for who_wants_to_know in c["people"]:
+                if (person["name"] in who_wants_to_know["notify_if_home"]):
+                    log_and_print("home = "+str(home))
+                    log_and_print("sending email to " + person["name"] + " at " + person["email"])
+                    send_email(person["email"],'Home Alarm System - ' + person["name"] + ' is home',message)
+                    mqttc.publish("alarm/homenow","sending email to " + person["name"] + " at " + person["email"])
+                    #send_text(person["phone"],message.replace("\r\n"," | "))
+
+    #update state variables
+    update_people()
+    time.sleep(60)
