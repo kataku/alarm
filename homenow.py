@@ -181,9 +181,9 @@ while(1):
             for who_wants_to_know in c["people"]:
                 if (person["name"] in who_wants_to_know["notify_if_home"]):
                     log_and_print("home = "+str(home))
-                    log_and_print("sending email to " + person["name"] + " at " + person["email"])
+                    log_and_print("sending email to " + perwho_wants_to_knowson["name"] + " at " + who_wants_to_know["email"])
                     send_email(person["email"],'Home Alarm System - ' + person["name"] + ' is home',message)
-                    mqttc.publish("alarm/homenow","sending email to " + person["name"] + " at " + person["email"])
+                    mqttc.publish("alarm/homenow","sending email to " + who_wants_to_know["name"] + " at " + who_wants_to_know["email"])
                     #send_text(person["phone"],message.replace("\r\n"," | "))
 
     #update state variables
