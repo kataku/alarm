@@ -118,7 +118,7 @@ def send_text(phone_number,message):
 
     try:
         call = 'adb shell service call isms 7 i32 1 s16 "com.android.mms" s16 "'+phone_number+'" s16 "null" s16 \''+message+'\' s16 "null" s16 "null"'
-        print(call)
+        #log_and_print(call)
         subprocess.call(call,shell=True)
     except:
         log_and_print("text send to " +phone_number+ " failed")
@@ -148,8 +148,8 @@ def on_message(client, userdata, msg):
 
     message = "Source: " + msg.topic
     message += "\r\nSensor: "+ sensor_name
-    message += "\r\nhome: "+str(home)
-    message += "\r\nnot_home: "+str(not_home)
+    message += "\r\nhome: "+set_to_str(home)
+    message += "\r\nnot_home: "+set_to_str(not_home)
     message += "\r\ndate: "+f"{datetime.datetime.now():%Y-%m-%d}"
     message += "\r\ntime: "+str(datetime.datetime.now().time())
 
@@ -174,7 +174,13 @@ def on_message(client, userdata, msg):
                     send_text(person["phone"],message.replace("\r\n"," | "))
         else:
             log_and_print("No-ones home but we notified "+str(since)+" seconds ago, we rearm in "+str(c['seconds_before_rearm']-since)+" seconds")
-   
+
+def set_to_str(a):
+    a = str(a)
+    a = a.replace("{","")
+    a = a.replace("}","")
+    a = a.replace("'","")
+    return a
 #-------------------------------------------------------------------------------------
 # EXECUTION BEGINS HERE
 #-------------------------------------------------------------------------------------
@@ -192,8 +198,6 @@ log_and_print("Connecting...")
 mqttc.connect(c["server"], 1883, 60)
 
 notified_last = -c['seconds_before_rearm']
-
-print(notified_last)
 
 # Blocking call that processes network traffic, dispatches callbacks and
 # handles reconnecting.
