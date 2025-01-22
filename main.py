@@ -201,29 +201,36 @@ def on_homenow(client, userdata, msg):
     #has someoone used an exit recently enough?
     if (since < c['seconds_to_check_is_home_after_exit'] ):
 
-        log_and_print("seconds since last exit: " + str(since))        
-        log_and_print("someone_is_home: " + str(someone_is_home))
-        log_and_print("someone_is_home_previous: " + str(someone_is_home_previous))
+        log_and_print("seconds since last exit: " + str(since) + " \r\nsomeone_is_home: " + str(someone_is_home) + "\r\nsomeone_is_home_previous: " + str(someone_is_home_previous))
         
+        change = False
         latest_is_home = False
-
+        
         if (message!="set()"):
             latest_is_home = True
         
         if someone_is_home_previous == latest_is_home:
-            someone_is_home = latest_is_home
-            if (someone_is_home):
-                log_and_print("Someone was home 2 minutes in a row, disarming")
-            else:
-                log_and_print("No-one was home 2 minutes in a row, arming")
+            if (someone_is_home != latest_is_home):
+                
+                someone_is_home = latest_is_home
+                change = True
+
+                if (someone_is_home):
+                    log_and_print("Someone was home 2 minutes in a row, disarming")
+                else:
+                    log_and_print("No-one was home 2 minutes in a row, arming")
         else:
             someone_is_home_previous = latest_is_home
+            change = True
+            
             if (someone_is_home_previous):
                 log_and_print("someone was home for 1 minute")
             else:
                 log_and_print("No-one was home for 1 minute")
                 
-   
+        if (change):
+            log_and_print("Updated:\r\nsomeone_is_home: " + str(someone_is_home) + "\r\nsomeone_is_home_previous: " + str(someone_is_home_previous))
+
 def on_sensor(client, userdata, msg):
 
     global notified_last
@@ -256,11 +263,11 @@ def on_sensor(client, userdata, msg):
     if (is_exit):
         last_exit = time.time() #record the last time an exit was triggered
         home,not_home = are_we_home() #do a fresh ping
-
+        
     #no-one was home but now someone is - Notfy folks of their arrival home where relevant
     if (is_exit and someone_is_home is False and len(home)>0):
         log_and_print("Someone is now home!")
-        # we're gonna disarm right away as false positives aren't a thing in our testing
+        # we're gonna disarm right away if phone found to prevent false alarms
         someone_is_home = True
         someone_is_home_previous = True
 
@@ -295,7 +302,7 @@ def on_sensor(client, userdata, msg):
 
     log_and_print("Message:\r\n" + message)
     
-    #rely on the someone_is_home to avoid triggers when no-ones opened an exit
+    #someone_is_home to trying to avoid triggers when no-ones opened an exit
     if (someone_is_home is False):
         since = int(time.time()-notified_last)
         if (since > c['seconds_before_rearm'] ):
