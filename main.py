@@ -286,11 +286,18 @@ def on_sensor(client, userdata, msg):
                 #noone was home now this person is! Do we need to tell anyone?
                 for notify in c["people"]:
                     if (person["name"] in notify["notify_if_home"]):
+
                         log_and_print("home = "+str(home))
-                        log_and_print("sending email to " + notify["name"] + " at " + notify["email"])
-                        send_email(person["email"],'Home Alarm System - ' + person["name"] + ' is home',message)
-                        mqttc.publish("alarm/homenow","sending email to " + notify["name"] + " at " + notify["email"])
-                        send_text(person["phone"],message.replace("\r\n"," | "))
+
+                        if (notify["send_email"]):
+                            log_and_print("sending email to " + notify["name"] + " at " + notify["email"])
+                            mqttc.publish("alarm/homenow","sending email to " + notify["name"] + " at " + notify["email"])
+                            send_email(notify["email"],'Home Alarm System - ' + person["name"] + ' is home',message)
+                            
+                        if (notify["send_text"]):
+                            log_and_print("sending email to " + notify["name"] + " at " + notify["email"])                           
+                            mqttc.publish("alarm/homenow","sending text to " + notify["name"] + " at " + notify["phone"])
+                            send_text(notify["phone"],message.replace("\r\n"," | "))
     
     #make up and MQTT the message anyway
     message = "Source: " + msg.topic
