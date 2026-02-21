@@ -27,7 +27,6 @@ WiFiClient wifiClient;
 //MqttClient mqttClient(wifiClient);
 PubSubClient mqttClient(wifiClient);
 
-void(* resetFunc) (void) = 0; //declare reset function @ address 0
 
 void initWiFi() {
   
@@ -106,8 +105,8 @@ void check_services(){
 void loop() {
 
   if (millis() > reset_after){ //default to once a day, found that sometimes they just get stuck and this is a naff but effective fix.
-    Serial.println("resetting");
-    resetFunc();  //call reset
+    Serial.println("restarting the board");
+    ESP.restart();
   }
 
   check_services();
