@@ -21,10 +21,11 @@ const int valuesKnowable = SENSOR_LIMIT;
 
 unsigned long since_reconnect = 0;
 unsigned long reset_after = 86400000; //24hrs in millis
+unsigned long message_shown_at = 0;
 
-int sensorListSize = 2;
-int ids[2];
-String names[2];
+int sensorListSize = 28;
+int ids[28];
+String names[28];
 bool armed;
 bool triggered;
 
@@ -54,8 +55,6 @@ PubSubClient mqttClient(wifiClient);
 #define D8 15
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
-void(* resetFunc) (void) = 0; //declare reset function @ address 0
 
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message recieved [");
@@ -105,11 +104,17 @@ void dismissMessage(){
 void loop() {
   if (millis() > reset_after){ //default to once a day, found that sometimes they just get stuck and this is a naff but effective fix.
     Serial.println("resetting");
-    resetFunc();  //call reset
+    ESP.restart();
+  }
+
+  if ( millis() - message_shown_at > 5000 && message_shown_at != 0){
+    dismissMessage();
+    message_shown_at = 0;
   }
 
   //arm or disarm
-  if(digitalRead(D0) == HIGH){    
+  if(digitalRead(D0) == HIGH){
+    digitalWrite(D8, LOW);
     preferences.begin("alarm", false);
     if (armed){
       armed = false;
@@ -122,11 +127,9 @@ void loop() {
       Serial.println("Enabled");
       showMessage("Enabled");
     }
+    message_shown_at = millis();
     preferences.end();
-
-    delay(2000); //we want to make this a button press to dismiss
-    dismissMessage();  
-
+    delay(1000); //debounce
   }
   //stop buzzer and dismiss
   if(digitalRead(D1) == HIGH){    
@@ -187,14 +190,11 @@ void setup() {
     showMessage("Disabled");
   }
 
-  delay(2000); //we want to make this a button press to dismiss
-  dismissMessage();  
+  message_shown_at = millis();
 
-  ids[0]=123456;
-  ids[1]=654321;
- 
-  names[0]="Test Sensor 1";
-  names[1]="Test Sensor 2";  
+  ids[0]=1111111;
+  names[0]="Test Sensor";
+
 }
 
 void initWiFi() {
