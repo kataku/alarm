@@ -24,8 +24,8 @@ unsigned long reset_after = 86400000; //24hrs in millis
 unsigned long message_shown_at = 0;
 
 int sensorListSize = 28;
-int ids[28];
-String names[28];
+int ids[1];
+String names[1];
 bool armed;
 bool triggered;
 
