@@ -20,7 +20,7 @@ int valuesKnown = 0;
 unsigned long time_sent[valuesKnowable];
 unsigned long value_sent[valuesKnowable];
 unsigned long since_reconnect = 0;
-unsigned long reset_after = 86400000; //24hrs in millis
+unsigned long reset_after = 86400000;//1 HOUR | 86400000 24hrs in millis //1000 = 1 SECOND
 
 RCSwitch mySwitch = RCSwitch();
 WiFiClient wifiClient;
@@ -29,18 +29,24 @@ PubSubClient mqttClient(wifiClient);
 
 
 void initWiFi() {
-  
+
   WiFi.mode(WIFI_STA);
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.setHostname(host); //define hostname
   //wifi_station_set_hostname( hostname.c_str() );
   WiFi.begin(ssid, pass);
   Serial.print("Connecting to WiFi ..");
+  unsigned long wifi_start = millis();
   while (WiFi.status() != WL_CONNECTED) {
-    // Wait for WIFI
+    delay(500);
+    Serial.print(".");
+    if (millis() - wifi_start > 30000) {
+      Serial.println("WiFi connection timed out, restarting...");
+      ESP.restart();
+    }
   }
   Serial.println(WiFi.localIP());
-  
+
 }
 
 void initMQTT(){
@@ -91,14 +97,16 @@ void check_services(){
     Serial.println(WiFi.status());
     initWiFi();
   }
-  //recheck MQTT - this sometimes says false when its true (switched lib to avoid issue but keeping this logic as a failover) 
-  if (mqttClient.connected()){
-    since_reconnect = millis();    
-  }
-  if (millis() - since_reconnect > 60000){
-    //try to reconnect to MQTT every 60 seconds if connected returns false
-    initMQTT();
+  //recheck MQTT - try to reconnect immediately if disconnected, but rate limit to every 5 seconds
+  if (!mqttClient.connected() && millis() - since_reconnect > 5000){
+    Serial.println("MQTT disconnected, reconnecting...");
     since_reconnect = millis();
+    if (mqttClient.connect(mq_topic, mq_user, mq_pass, NULL, NULL, NULL, NULL, false)) {
+      Serial.println("MQTT reconnected");
+    } else {
+      Serial.print("MQTT reconnect failed, rc=");
+      Serial.println(mqttClient.state());
+    }
   }
 }
 
@@ -152,15 +160,15 @@ void loop() {
   }
 }
 
-char* num_to_char(unsigned long number) {  
-  char* char_type = new char[(((sizeof number) * CHAR_BIT) + 2)/3 + 2];
-  sprintf(char_type, "%d", number);
-  return char_type;
+const char* num_to_char(unsigned long number) {
+  static char buf[12];
+  sprintf(buf, "%lu", number);
+  return buf;
 }
 
 boolean mqtt_send(unsigned long message){
   
-  if(mqttClient.publish(mq_topic,num_to_char(message))){
+  if(mqttClient.publish(mq_topic, num_to_char(message))){
     Serial.println("message sent");    
     sentValue(message,millis());
     return true;
