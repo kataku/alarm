@@ -1,4 +1,3 @@
-#include <string>
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -20,12 +19,12 @@ const char mq_topics[] = MQTT_TOPICS;
 const int valuesKnowable = SENSOR_LIMIT;
 
 unsigned long since_reconnect = 0;
-unsigned long reset_after = 86400000; //24hrs in millis
+unsigned long reset_after = 86400000;//24hrs in millis
 unsigned long message_shown_at = 0;
 
 int sensorListSize = 28;
-int ids[1];
-String names[1];
+int ids[28];
+String names[28];
 bool armed;
 bool triggered;
 
@@ -61,8 +60,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print(topic);
   Serial.print("] ");
 
-  std::string s( (const char*)payload, length);
-  int x = atoi( s.c_str() );
+  char buf[length + 1];
+  memcpy(buf, payload, length);
+  buf[length] = '\0';
+  int x = atoi(buf);
 
   //int x = atoi ((const char*)payload);  
   Serial.print(x);
@@ -192,9 +193,65 @@ void setup() {
 
   message_shown_at = millis();
 
-  ids[0]=1111111;
-  names[0]="Test Sensor";
+  ids[0]=2372542;
+  ids[1]=12300311;
+  ids[2]=6908350;
+  ids[3]=6129598;
+  ids[4]=6697406;
+  ids[5]=6895294;
+  ids[6]=14867079;
+  ids[7]=6944190;
+  ids[8]=15267975;
+  ids[9]=15267971;
+  ids[10]=2066839;
+  ids[11]=2066835;
+  ids[12]=2517919;
+  ids[13]=2517911;
+  ids[14]=2517907;
+  ids[15]=7751870;
+  ids[16]=735639;
+  ids[17]=6479294;
+  ids[18]=6253758;
+  ids[19]=2070423;
+  ids[20]=1742490;
+  ids[21]=1742483;
+  ids[22]=15478407;
+  ids[23]=15478403;
+  ids[24]=735635;
+  ids[25]=2070419;
+  ids[26]=2070419;
+  ids[27]=14867075;
+  //ids[28]=12015110;
 
+  names[0]="Test Sensor";
+  names[1]="Lab Bifolds";
+  names[2]="Lab Window Top Left";
+  names[3]="Lab Window Top Right";
+  names[4]="Lab Window Bottom left";
+  names[5]="Lab Window Bottom Right";        
+  names[6]="Kitchen Window";
+  names[7]="Conservatory Kitchen Door";
+  names[8]="Conservatory Window left";        
+  names[9]="Conservatory Window left Tamper";
+  names[10]="Conservatory Window Right";
+  names[11]="Conservatory Window Right Tamper";
+  names[12]="Conservatory Door";        
+  names[13]="Conservatory Door";
+  names[14]="Conservatory Door Tamper";        
+  names[15]="Lounge Bifolds";
+  names[16]="Lounge Window 1";
+  names[17]="Lounge Window 2";
+  names[18]="Lounge Window 3";
+  names[19]="Lounge Window 4";
+  names[20]="Front Door";
+  names[21]="Front Door Tamper";
+  names[22]="Toilet Window";
+  names[23]="Toilet Window Tamper";
+  names[24]="Lounge Window 1 Tamper";        
+  names[25]="Lounge Window 4 Tamper";
+  names[26]="Lounge Window 4 Tamper";
+  names[27]="kitchen Window tamper";
+  //names[28]="IR Sensor";
 }
 
 void initWiFi() {
@@ -221,6 +278,7 @@ void initMQTT(){
   Serial.println(broker);
 
   mqttClient.setServer(broker, port);
+  mqttClient.setCallback(callback);
 
   while (mqttClient.connected()==false) {
       Serial.print("Attempting to connect to the MQTT broker: ");
@@ -238,7 +296,9 @@ void initMQTT(){
     }    
     //subscribe TO TOPICS
     //http://www.steves-internet-guide.com/using-arduino-pubsub-mqtt-client/
-    char *p = (char*)mq_topics;
+    char topicsCopy[strlen(mq_topics) + 1];
+    strcpy(topicsCopy, mq_topics);
+    char *p = topicsCopy;
     char *str;
     while ((str = strtok_r(p, ";", &p)) != NULL){ // delimiter is the semicolon
       Serial.print(" Subscribed To: ");
@@ -256,7 +316,6 @@ void check_services(){
     Serial.println(WiFi.status());
     initWiFi();
   }
-  mqttClient.setCallback(callback);
 
   //recheck MQTT - this sometimes says false when its true (switched lib to avoid issue but keeping this logic as a failover) 
   if (mqttClient.connected()){
@@ -271,7 +330,7 @@ void check_services(){
   }
 }
 
-void showMessage(String message){
+void showMessage(const String& message){
   display.clearDisplay();
   // Display Text
   display.setTextSize(2);

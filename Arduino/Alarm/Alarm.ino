@@ -20,7 +20,7 @@ int valuesKnown = 0;
 unsigned long time_sent[valuesKnowable];
 unsigned long value_sent[valuesKnowable];
 unsigned long since_reconnect = 0;
-unsigned long reset_after = 86400000;//1 HOUR | 86400000 24hrs in millis //1000 = 1 SECOND
+unsigned long reset_after = 86400000;// 86400000 24hrs in millis //1000 = 1 SECOND
 
 RCSwitch mySwitch = RCSwitch();
 WiFiClient wifiClient;
@@ -62,8 +62,7 @@ void initMQTT(){
     //client id, user, pass, NULL,NULL,NULL,NULL,false
     if (!mqttClient.connect(mq_topic,mq_user,mq_pass,NULL,NULL,NULL,NULL,false)) {
       Serial.print("MQTT connection failed! Error code = ");
-      Serial.println(mqttClient.state());
-      Serial.print("failed, rc=");
+      Serial.println(mqttClient.state());      
       Serial.println(" try again in 5 seconds");
       delay(5000);
     } else {
@@ -139,7 +138,7 @@ void loop() {
 
     unsigned long triggering_value = mySwitch.getReceivedValue();
 
-    long since = millis() - valueLastSent(triggering_value);
+    unsigned long since = millis() - valueLastSent(triggering_value);
 
     Serial.print("Millis since we sent this value: ");
     Serial.println(since);
@@ -177,7 +176,7 @@ boolean mqtt_send(unsigned long message){
   }
 }
 
-void sentValue(long value,long time){
+void sentValue(unsigned long value,unsigned long time){
   //do we already have this value? Update the time.  
   for (int i = 0; i < valuesKnown; i++) {
     if (value_sent[i]==value){      
@@ -185,16 +184,15 @@ void sentValue(long value,long time){
       return;
     }
   }
-  //if we don't have it add it  
-  time_sent[valuesKnown] = millis();
-  value_sent[valuesKnown] = value;
-
   if (valuesKnown < valuesKnowable){
+    //if we don't have it add it  
+    time_sent[valuesKnown] = time;
+    value_sent[valuesKnown] = value;
     valuesKnown++;
   }
 }
 
-unsigned long valueLastSent(long value){
+unsigned long valueLastSent(unsigned long value){
   //loop till we find the value
   for (int i = 0; i < valuesKnown; i++) { 
     if (value_sent[i]==value){
