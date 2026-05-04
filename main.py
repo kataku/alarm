@@ -6,6 +6,8 @@ import json
 import datetime
 import smtplib
 import time
+import os
+from os.path import isfile, join
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -15,6 +17,8 @@ from email.mime.multipart import MIMEMultipart
 notified_last = 0
 someone_is_home = False
 someone_is_home_previous = False
+home = set()
+not_home = set()
 last_exit = int(time.time()) #we're gonna startup listening for devices
 last_sensor = int(time.time()) #we're gonna startup listening for devices
 
@@ -28,6 +32,18 @@ def log_and_print(message):
         log_file = open(c['log']+f"{datetime.datetime.now():%Y-%m-%d}"+".log","a")
         log_file.write(f"{datetime.datetime.now():%Y-%m-%d}" + " | " + str(datetime.datetime.now().time()) + ": " + message+"\r\n")
         log_file.close()
+
+    #hard coded for now
+    path = 'logs'
+    alarmlogs = [f for f in os.listdir(path) if isfile(join(path, f))]
+
+    for file in alarmlogs:
+        date_from_name = file.replace(".log","")
+        date_from_name = date_from_name[-10:]
+        date_format = '%Y-%m-%d'
+        date = datetime.datetime.strptime(date_from_name,date_format)
+        if date < (datetime.datetime.now()-datetime.timedelta(365)): #keep logs for a year
+            os.remove(path+"/"+file)
 
 def get_friendly_sensor_name(id):
     for sensor in c["Sensors"]:
@@ -192,11 +208,23 @@ def on_force(client, userdata, msg):
 
 def on_homenow(client, userdata, msg):
     global last_exit
+    global home
+    global not_home
     global someone_is_home
     global someone_is_home_previous
     since = int(time.time()-last_exit)
 
     message = str(msg.payload).replace("b'","").replace("b\"","").replace("'","").replace("\"","")
+    
+    #update home and not home when homenow fires
+    home = set()
+    not_home = set()
+
+    for person in c['people']:
+        if person["name"] in message:
+            home.add(person["name"])
+        else:
+            not_home.add(person["name"])
 
     #has someoone used an exit recently enough?
     if (since < c['seconds_to_check_is_home_after_exit'] ):
@@ -291,12 +319,12 @@ def on_sensor(client, userdata, msg):
 
                         if (notify["send_email"]):
                             log_and_print("sending email to " + notify["name"] + " at " + notify["email"])
-                            mqttc.publish("alarm/homenow","sending email to " + notify["name"] + " at " + notify["email"])
+                            mqttc.publish("alarm/log","sending email to " + notify["name"] + " at " + notify["email"])
                             send_email(notify["email"],'Home Alarm System - ' + person["name"] + ' is home',message)
                             
                         if (notify["send_text"]):
-                            log_and_print("sending email to " + notify["name"] + " at " + notify["email"])                           
-                            mqttc.publish("alarm/homenow","sending text to " + notify["name"] + " at " + notify["phone"])
+                            log_and_print("sending text to " + notify["name"] + " at " + notify["email"])                           
+                            mqttc.publish("alarm/log","sending text to " + notify["name"] + " at " + notify["phone"])
                             send_text(notify["phone"],message.replace("\r\n"," | "))
     
     #make up and MQTT the message anyway
