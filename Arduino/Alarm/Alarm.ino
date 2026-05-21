@@ -1,8 +1,11 @@
 //#include <ArduinoMqttClient.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
+#include <esp_task_wdt.h>
 #include "arduino_secrets.h"
 #include <RCSwitch.h>
+
+#define WDT_TIMEOUT_S 60
 
 ///////please enter your sensitive data in the Secret tab/arduino_secrets.h
 const char ssid[]     = WIFI_SSID;        // your network SSID
@@ -20,6 +23,7 @@ int valuesKnown = 0;
 unsigned long time_sent[valuesKnowable];
 unsigned long value_sent[valuesKnowable];
 unsigned long since_reconnect = 0;
+unsigned long mqtt_down_since = 0;
 unsigned long reset_after = 86400000;// 86400000 24hrs in millis //1000 = 1 SECOND
 
 RCSwitch mySwitch = RCSwitch();
@@ -55,29 +59,30 @@ void initMQTT(){
 
   mqttClient.setServer(broker, port);
 
+  unsigned long mqtt_start = millis();
   while (mqttClient.connected()==false) {
       Serial.print("Attempting to connect to the MQTT broker: ");
       Serial.println(broker);
- 
+
     //client id, user, pass, NULL,NULL,NULL,NULL,false
     if (!mqttClient.connect(mq_topic,mq_user,mq_pass,NULL,NULL,NULL,NULL,false)) {
       Serial.print("MQTT connection failed! Error code = ");
-      Serial.println(mqttClient.state());      
+      Serial.println(mqttClient.state());
+      if (millis() - mqtt_start > 60000) {
+        Serial.println("MQTT connection timed out, restarting...");
+        ESP.restart();
+      }
       Serial.println(" try again in 5 seconds");
       delay(5000);
     } else {
-      Serial.println("Connected to the MQTT broker!");            
-    }    
-  }//end while  
+      Serial.println("Connected to the MQTT broker!");
+    }
+  }//end while
 
 }
 
 void setup() {
-  //Initialize serial and wait for port to open:
   Serial.begin(115200);
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }  
   Serial.print("Serial Ready.");
   
   //setup pin for the 433 radio module
@@ -85,9 +90,21 @@ void setup() {
   mySwitch.enableReceive(GPIO_NUM_27);
   Serial.print("Pin Mode Set");  
   
-  initWiFi();    
+  initWiFi();
   initMQTT();
-   
+
+  //enable task watchdog as a last-resort recovery for any unforeseen hang in loop()
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  esp_task_wdt_config_t wdt_config = {
+    .timeout_ms = WDT_TIMEOUT_S * 1000,
+    .idle_core_mask = 0,
+    .trigger_panic = true,
+  };
+  esp_task_wdt_init(&wdt_config);
+#else
+  esp_task_wdt_init(WDT_TIMEOUT_S, true);
+#endif
+  esp_task_wdt_add(NULL);
 }
 
 void check_services(){
@@ -97,21 +114,32 @@ void check_services(){
     initWiFi();
   }
   //recheck MQTT - try to reconnect immediately if disconnected, but rate limit to every 5 seconds
-  if (!mqttClient.connected() && millis() - since_reconnect > 5000){
-    Serial.println("MQTT disconnected, reconnecting...");
-    since_reconnect = millis();
-    if (mqttClient.connect(mq_topic, mq_user, mq_pass, NULL, NULL, NULL, NULL, false)) {
-      Serial.println("MQTT reconnected");
-    } else {
-      Serial.print("MQTT reconnect failed, rc=");
-      Serial.println(mqttClient.state());
+  if (!mqttClient.connected()){
+    if (mqtt_down_since == 0) mqtt_down_since = millis();
+    if (millis() - mqtt_down_since > 300000){
+      Serial.println("MQTT down >5min, restarting...");
+      ESP.restart();
     }
+    if (millis() - since_reconnect > 5000){
+      Serial.println("MQTT disconnected, reconnecting...");
+      since_reconnect = millis();
+      if (mqttClient.connect(mq_topic, mq_user, mq_pass, NULL, NULL, NULL, NULL, false)) {
+        Serial.println("MQTT reconnected");
+      } else {
+        Serial.print("MQTT reconnect failed, rc=");
+        Serial.println(mqttClient.state());
+      }
+    }
+  } else {
+    mqtt_down_since = 0;
   }
 }
 
 void loop() {
 
-  if (millis() > reset_after){ //default to once a day, found that sometimes they just get stuck and this is a naff but effective fix.
+  esp_task_wdt_reset();
+
+  if ((long)(millis() - reset_after) >= 0){ //default to once a day, found that sometimes they just get stuck and this is a naff but effective fix.
     Serial.println("restarting the board");
     ESP.restart();
   }

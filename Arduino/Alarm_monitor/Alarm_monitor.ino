@@ -18,15 +18,19 @@ const char mq_pass[]  = MQTT_PASS;
 const char mq_topics[] = MQTT_TOPICS;
 const int valuesKnowable = SENSOR_LIMIT;
 
+unsigned long boot_millis = 0;
 unsigned long since_reconnect = 0;
 unsigned long reset_after = 86400000;//24hrs in millis
 unsigned long message_shown_at = 0;
+unsigned long message_timeout_ms = 5000;
 
 int sensorListSize = 28;
 int ids[28];
-String names[28];
+const char* names[28];
 bool armed;
 bool triggered;
+const char* pendingMessage = NULL;
+unsigned long pendingTimeoutMs = 5000;
 
 Preferences preferences;
 WiFiClient wifiClient;
@@ -87,11 +91,14 @@ void callback(char* topic, byte* payload, unsigned int length) {
       Serial.println("sensor id in list");
       Serial.print("Armed = ");
       Serial.println(armed);
+      Serial.println(names[i]);
+      pendingMessage = names[i]; //defer display I/O out of the MQTT callback
       if (armed){
-        Serial.println(names[i]);
         digitalWrite(D8, HIGH);
-        showMessage(names[i]);
         triggered = true;
+        pendingTimeoutMs = 10000;
+      }else{
+        pendingTimeoutMs = 10000; //unarmed: show trip on display but don't sound buzzer
       }
     }
   }
@@ -103,12 +110,19 @@ void dismissMessage(){
 }
 
 void loop() {
-  if (millis() > reset_after){ //default to once a day, found that sometimes they just get stuck and this is a naff but effective fix.
+  if (millis() - boot_millis > reset_after){ //default to once a day, found that sometimes they just get stuck and this is a naff but effective fix.
     Serial.println("resetting");
     ESP.restart();
   }
 
-  if ( millis() - message_shown_at > 5000 && message_shown_at != 0){
+  if (pendingMessage != NULL){
+    showMessage(pendingMessage);
+    message_shown_at = millis();
+    message_timeout_ms = pendingTimeoutMs;
+    pendingMessage = NULL;
+  }
+
+  if ( millis() - message_shown_at > message_timeout_ms && message_shown_at != 0){
     dismissMessage();
     message_shown_at = 0;
   }
@@ -129,6 +143,7 @@ void loop() {
       showMessage("Enabled");
     }
     message_shown_at = millis();
+    message_timeout_ms = 5000;
     preferences.end();
     delay(1000); //debounce
   }
@@ -172,7 +187,9 @@ void setup() {
     ; // wait for serial port to connect. Needed for native USB port only
   }
   Serial.println("Serial Ready.");
-  
+
+  boot_millis = millis();
+
   initWiFi();
   initMQTT();
   
@@ -180,7 +197,8 @@ void setup() {
   // initialize the OLED object
   if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
+    delay(2000);
+    ESP.restart(); //restart instead of hanging so transient I2C glitches recover
   }
 
   // Clear the buffer.
@@ -192,6 +210,7 @@ void setup() {
   }
 
   message_shown_at = millis();
+  message_timeout_ms = 5000;
 
   ids[0]=2372542;
   ids[1]=12300311;
@@ -266,11 +285,18 @@ void initWiFi() {
   WiFi.begin(ssid, pass);
   Serial.print("Connecting to WiFi ...");
   
+  unsigned long wifiStartAt = millis();
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
     delay(1000);
+    if (millis() - wifiStartAt > 60000){
+      Serial.println();
+      Serial.println("WiFi connect timeout, restarting");
+      delay(100);
+      ESP.restart();
+    }
   }
-  Serial.println(WiFi.localIP());  
+  Serial.println(WiFi.localIP());
 }
 
 void initMQTT(){
@@ -280,20 +306,27 @@ void initMQTT(){
   mqttClient.setServer(broker, port);
   mqttClient.setCallback(callback);
 
+  int mqttAttempts = 0;
   while (mqttClient.connected()==false) {
       Serial.print("Attempting to connect to the MQTT broker: ");
       Serial.println(broker);
- 
+
     //client id, user, pass, NULL,NULL,NULL,NULL,false
     if (!mqttClient.connect(mq_topics,mq_user,mq_pass,NULL,NULL,NULL,NULL,false)) {
       Serial.print("MQTT connection failed! Error code = ");
       Serial.println(mqttClient.state());
       Serial.print("failed, rc=");
       Serial.println(" try again in 5 seconds");
+      mqttAttempts++;
+      if (mqttAttempts >= 12){ //~1 minute of retries, then bail to setup()
+        Serial.println("MQTT connect timeout, restarting");
+        delay(100);
+        ESP.restart();
+      }
       delay(5000);
     } else {
-      Serial.println("Connected to the MQTT broker!");            
-    }    
+      Serial.println("Connected to the MQTT broker!");
+    }
     //subscribe TO TOPICS
     //http://www.steves-internet-guide.com/using-arduino-pubsub-mqtt-client/
     char topicsCopy[strlen(mq_topics) + 1];
@@ -305,7 +338,8 @@ void initMQTT(){
       Serial.println(str);
       mqttClient.subscribe(str);
     }
-  }//end while  
+  }//end while
+  since_reconnect = millis(); //avoid stale 0 triggering check_services to reconnect right after boot
 
 }
 
@@ -330,17 +364,23 @@ void check_services(){
   }
 }
 
-void showMessage(const String& message){
+void showMessage(const char* message){
   display.clearDisplay();
   // Display Text
   display.setTextSize(2);
   display.setTextColor(WHITE);
-  display.setCursor(0,0);  
-  if (message.indexOf(' ')==-1){    
+  display.setCursor(0,0);
+  const char* space = strchr(message, ' ');
+  if (space == NULL){
     display.println(message);
   }else{
-    display.println(message.substring(0, message.indexOf(' ')));    
-    display.println(message.substring(message.indexOf(' ') + 1));   
+    char first[64];
+    size_t firstLen = space - message;
+    if (firstLen >= sizeof(first)) firstLen = sizeof(first) - 1;
+    memcpy(first, message, firstLen);
+    first[firstLen] = '\0';
+    display.println(first);
+    display.println(space + 1);
   }
-  display.display(); 
+  display.display();
 }
