@@ -91,9 +91,11 @@ sudo systemctl restart homenow
 ## Testing
 
 ```
-python3 test_homenow.py          # unit tests, no network needed
-python3 test_homenow.py --live   # run the real check against config.json
-python3 test_send.py             # send a test email/text to the first person
+# who does the presence check see as home right now? (prints home, not_home, how each was found)
+python3 -c "import json,presence; print(presence.check_presence(json.load(open('config.json'))))"
+
+# send a test email/text to the first person in config.json
+python3 test_send.py
 ```
 
 ## Usage
