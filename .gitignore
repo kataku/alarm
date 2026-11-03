@@ -3,3 +3,4 @@ config.json
 arduino_secrets.h
 *.log
 test_*
+!test_send.py

@@ -6,6 +6,7 @@ import datetime
 import smtplib
 import time
 from presence import check_presence
+import sms
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -76,30 +77,7 @@ def send_email(email_address,subject,message):
     email_helper(sender_email, receiver_email, subject, message, smtp_server, smtp_port, smtp_username, smtp_password)
 
 def send_text(phone_number,message):
-    #( ) < > | ; & * \ ~ " '
-    message=message.replace('\\','\\\\')
-    message=message.replace(' ','\\ ')
-    message=message.replace('(','\\(')
-    message=message.replace(')','\\)')
-    message=message.replace('<','\\<')
-    message=message.replace('>','\\>')
-    message=message.replace(';','\\;')
-    message=message.replace('|','\\|')
-    message=message.replace('&','\\&')
-    message=message.replace('*','\\*')
-    message=message.replace('~','\\~')
-    message=message.replace('"','\\"')
-    message=message.replace("'",'\\"')
-    message=message.replace('`','\\`')
-    message=message.replace('%','\\%')
-    message=message.replace('¬','\\¬')
-
-    try:
-        call = 'adb shell service call isms 7 i32 1 s16 "com.android.mms" s16 "'+phone_number+'" s16 "null" s16 \''+message+'\' s16 "null" s16 "null"'
-        print(call)
-        subprocess.call(call,shell=True)
-    except:
-        log_and_print("text send to " +phone_number+ " failed")
+    sms.send_text(phone_number, message, log=log_and_print)
 
 home,not_home = are_we_home()
 
