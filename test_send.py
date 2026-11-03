@@ -5,6 +5,7 @@ import json
 import datetime
 import smtplib
 import time
+from presence import check_presence
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -13,30 +14,7 @@ with open('config.json') as json_data:
     json_data.close()
 
 def are_we_home():
-
-    home = set()
-    not_home = set()
-
-    for person in c["people"]:
-        name = person["name"]
-        ip = person["ip"]
-
-        try:            
-            if ("Linux" in str(platform.system())):
-                response =  str(subprocess.Popen(['ping', '-c 2', ip], stdout=subprocess.PIPE).communicate()[0])
-            else:
-                response = str(check_output(f"ping -n 2 {ip}"))
-
-            if "Destination host unreachable" in response or "0 received" in response or 'Request timed out.' in response:
-                #log_and_print(f"DOWN {ip} Ping Unsuccessful, Host is DOWN.")
-                not_home.add(name)
-            else:
-                #log_and_print(f"UP {ip} Ping Successful, Host is UP!")
-                home.add(name)
-        except:
-            log_and_print("Ping for " + name + " failed, which we count as not on network")
-            not_home.add(name)
-
+    home, not_home, details = check_presence(c)
     return home, not_home
 
 def set_to_str(a):
