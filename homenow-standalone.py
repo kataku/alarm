@@ -6,6 +6,7 @@ import json
 import datetime
 import smtplib
 import time
+from presence import check_presence
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -20,30 +21,8 @@ def log_and_print(message):
         log_file.close()
 
 def are_we_home():
-
-    home = set()
-    not_home = set()
-
-    for person in c["people"]:
-        name = person["name"]
-        ip = person["ip"]
-        try:
-            print("Looking for "+name)
-            if ("Linux" in str(platform.system())):
-                response =  str(subprocess.Popen(['ping', '-c 10', ip], stdout=subprocess.PIPE).communicate()[0])
-            else:
-                response = str(check_output(f"ping -n 10 {ip}"))
-
-            if "Destination host unreachable" in response or "0 received" in response or 'Request timed out.' in response:
-                #log_and_print(f"DOWN {ip} Ping Unsuccessful, Host is DOWN.")
-                not_home.add(name)
-            else:
-                #log_and_print(f"UP {ip} Ping Successful, Host is UP!")
-                home.add(name)
-        except:
-            log_and_print("Ping for " + name + " failed, which we count as not on network")
-            not_home.add(name)
-        
+    home, not_home, details = check_presence(c)
+    print(details)
     return home, not_home
 
 def email_helper(sender_email, receiver_email, subject, message, smtp_server, smtp_port, smtp_username, smtp_password):
@@ -182,7 +161,7 @@ while(1):
                 if (person["name"] in who_wants_to_know["notify_if_home"]):
                     log_and_print("home = "+str(home))
                     log_and_print("sending email to " + who_wants_to_know["name"] + " at " + who_wants_to_know["email"])
-                    send_email(person["email"],'Home Alarm System - ' + person["name"] + ' is home',message)
+                    send_email(who_wants_to_know["email"],'Home Alarm System - ' + person["name"] + ' is home',message)
                     mqttc.publish("alarm/homenow","sending email to " + who_wants_to_know["name"] + " at " + who_wants_to_know["email"])
                     #send_text(person["phone"],message.replace("\r\n"," | "))
 
