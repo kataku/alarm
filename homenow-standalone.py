@@ -37,7 +37,7 @@ def email_helper(sender_email, receiver_email, subject, message, smtp_server, sm
 
     try:
         # Create a secure SSL/TLS connection to the SMTP server
-        server = smtplib.SMTP(smtp_server, smtp_port)
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
         server.ehlo()
         server.starttls()
         server.ehlo()
@@ -90,7 +90,7 @@ def send_text(phone_number,message):
     try:        
         call = 'adb shell service call isms 7 i32 1 s16 "com.android.mms" s16 "'+phone_number+'" s16 "null" s16 \''+message+'\' s16 "null" s16 "null"'
         print(call)
-        subprocess.call(call,shell=True)
+        subprocess.call(call,shell=True,timeout=30)
     except:
         log_and_print("text send to " +phone_number+ " failed")
 
@@ -106,7 +106,7 @@ def update_people():
     if (len(home)==0):
         if (not noones_home):
             log_and_print("No-one is Home")
-            mqttc.publish("alarm/homenow","No-one is Home")
+            mqttc.publish("alarm/log","No-one is Home")
         noones_home = True
     else:        
         noones_home = False
@@ -131,6 +131,7 @@ mqttc.on_connect = on_connect
 mqttc.username_pw_set(username=c["username"],password=c["password"])
 log_and_print("Connecting...")
 mqttc.connect(c["server"], 1883, 60)
+mqttc.loop_start() #background thread: keepalive + automatic reconnect, otherwise publishes silently fail after a drop
 
 #set initial state
 home,not_home = are_we_home()
@@ -141,7 +142,7 @@ while(1):
 
     #check for phones by ip
     home,not_home = are_we_home()
-    mqttc.publish("alarm/homenow",str(home))
+    mqttc.publish("alarm/homenow",json.dumps(sorted(home)))
     print("home = "+str(home))
 
     #react to any changes
@@ -162,7 +163,7 @@ while(1):
                     log_and_print("home = "+str(home))
                     log_and_print("sending email to " + who_wants_to_know["name"] + " at " + who_wants_to_know["email"])
                     send_email(who_wants_to_know["email"],'Home Alarm System - ' + person["name"] + ' is home',message)
-                    mqttc.publish("alarm/homenow","sending email to " + who_wants_to_know["name"] + " at " + who_wants_to_know["email"])
+                    mqttc.publish("alarm/log","sending email to " + who_wants_to_know["name"] + " at " + who_wants_to_know["email"])
                     #send_text(person["phone"],message.replace("\r\n"," | "))
 
     #update state variables

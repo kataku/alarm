@@ -61,6 +61,7 @@ mqttc.on_connect = on_connect
 mqttc.username_pw_set(username=c["username"],password=c["password"])
 log_and_print("Connecting...")
 mqttc.connect(c["server"], 1883, 60)
+mqttc.loop_start() #background thread: keepalive + automatic reconnect, otherwise publishes silently fail after a drop
 
 #set initial state
 home,not_home = are_we_home()
@@ -71,7 +72,7 @@ while(1):
 
     #check for phones by ip
     home,not_home = are_we_home()
-    mqttc.publish("alarm/homenow",str(home))
+    mqttc.publish("alarm/homenow",json.dumps(sorted(home)))
     print("home = "+str(home))
 
     #update state variables

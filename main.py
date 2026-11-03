@@ -22,6 +22,7 @@ home = set()
 not_home = set()
 last_exit = int(time.time()) #we're gonna startup listening for devices
 last_sensor = int(time.time()) #we're gonna startup listening for devices
+last_log_cleanup = None
 
 #-------------------------------------------------------------------------------------
 # FUNCTION DEFINITIONS
@@ -34,17 +35,31 @@ def log_and_print(message):
         log_file.write(f"{datetime.datetime.now():%Y-%m-%d}" + " | " + str(datetime.datetime.now().time()) + ": " + message+"\r\n")
         log_file.close()
 
+    delete_old_logs()
+
+def delete_old_logs():
+    #once a day is plenty - this used to scan the whole folder on every log line
+    global last_log_cleanup
+    today = datetime.date.today()
+    if (last_log_cleanup == today):
+        return
+    last_log_cleanup = today
+
     #hard coded for now
     path = 'logs'
-    alarmlogs = [f for f in os.listdir(path) if isfile(join(path, f))]
+    try:
+        alarmlogs = [f for f in os.listdir(path) if isfile(join(path, f))]
+    except OSError:
+        return
 
     for file in alarmlogs:
-        date_from_name = file.replace(".log","")
-        date_from_name = date_from_name[-10:]
-        date_format = '%Y-%m-%d'
-        date = datetime.datetime.strptime(date_from_name,date_format)
-        if date < (datetime.datetime.now()-datetime.timedelta(365)): #keep logs for a year
-            os.remove(path+"/"+file)
+        try:
+            date_from_name = file.replace(".log","")[-10:]
+            date = datetime.datetime.strptime(date_from_name,'%Y-%m-%d')
+            if date < (datetime.datetime.now()-datetime.timedelta(365)): #keep logs for a year
+                os.remove(path+"/"+file)
+        except (ValueError, OSError):
+            continue #not one of our logs, or already gone - never let housekeeping stop the alarm
 
 def get_friendly_sensor_name(id):
     for sensor in c["Sensors"]:
@@ -69,7 +84,7 @@ def email_helper(sender_email, receiver_email, subject, message, smtp_server, sm
 
     try:
         # Create a secure SSL/TLS connection to the SMTP server
-        server = smtplib.SMTP(smtp_server, smtp_port)
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=30) #never hang the mqtt callback
         server.ehlo()
         server.starttls()
         server.ehlo()
@@ -122,7 +137,7 @@ def send_text(phone_number,message):
     try:
         call = 'adb shell service call isms 7 i32 1 s16 "com.android.mms" s16 "'+phone_number+'" s16 "null" s16 \''+message+'\' s16 "null" s16 "null"'
         #log_and_print(call)
-        subprocess.call(call,shell=True)
+        subprocess.call(call,shell=True,timeout=30) #never hang the mqtt callback
     except:
         log_and_print("text send to " +phone_number+ " failed")
 
@@ -208,6 +223,21 @@ def notify_arrival(arrived, home, not_home):
                         log_and_print("sending text to " + notify["name"] + " at " + notify["phone"])
                         send_text(notify["phone"],message.replace("\r\n"," | "))
 
+def parse_homenow(payload):
+    #homenow publishes a JSON list of names, e.g. ["Leon", "Chrissy"] ([] = no-one home)
+    text = payload.decode("utf-8", errors="replace").strip()
+    try:
+        names = json.loads(text)
+        if isinstance(names, list):
+            return {str(n) for n in names}
+    except ValueError:
+        pass
+
+    #older format: "set()" or "{'Leon', 'Chrissy'}" - keeps things working while the services restart
+    if text in ("", "set()"):
+        return set()
+    return {n.strip().strip("'\"") for n in text.strip("{}").split(",") if n.strip()}
+
 def on_homenow(client, userdata, msg):
     global last_exit
     global home
@@ -216,14 +246,14 @@ def on_homenow(client, userdata, msg):
     global someone_is_home_previous
     since = int(time.time()-last_exit)
 
-    message = str(msg.payload).replace("b'","").replace("b\"","").replace("'","").replace("\"","")
-    
-    #update home and not home when homenow fires
+    names = parse_homenow(msg.payload)
+
+    #update home and not home when homenow fires (whole-name match, not substring)
     home = set()
     not_home = set()
 
     for person in c['people']:
-        if person["name"] in message:
+        if person["name"] in names:
             home.add(person["name"])
         else:
             not_home.add(person["name"])
@@ -234,11 +264,8 @@ def on_homenow(client, userdata, msg):
         log_and_print("seconds since last exit: " + str(since) + " \r\nsomeone_is_home: " + str(someone_is_home) + "\r\nsomeone_is_home_previous: " + str(someone_is_home_previous))
         
         change = False
-        latest_is_home = False
-        
-        if (message!="set()"):
-            latest_is_home = True
-        
+        latest_is_home = len(home) > 0
+
         if someone_is_home_previous == latest_is_home:
             if (someone_is_home != latest_is_home):
                 
