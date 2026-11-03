@@ -15,6 +15,7 @@
         {
             "name":"John",
             "ip":"1.2.3.4",
+            "mac":"xx:xx:xx:xx",
             "phone":"1234567890",
             "send_text":true,
             "email":"John@example.com",
@@ -24,6 +25,7 @@
         {
             "name":"Doe",
             "ip":"1.2.3.4",
+            "mac":"xx:xx:xx:xx",
             "phone":"1234567890",
             "send_text":true,
             "email":"Doe@example.com",

@@ -6,6 +6,7 @@ import json
 import datetime
 import smtplib
 import time
+from presence import check_presence
 import os
 from os.path import isfile, join
 from email.mime.text import MIMEText
@@ -52,33 +53,8 @@ def get_friendly_sensor_name(id):
     return id.replace("b'","").replace("'","")
 
 def are_we_home():
-
-    home = set()
-    not_home = set()
-    retries = 4
-
-    for person in c["people"]:
-        name = person["name"]
-        ip = person["ip"]
-        try:
-            print("Looking for "+name)
-            if ("Linux" in str(platform.system())):
-                response =  str(subprocess.Popen(['ping', '-c '+str(retries), ip], stdout=subprocess.PIPE).communicate()[0])
-            else:
-                response = str(check_output(f"ping -n {retries} {ip}"))
-
-            mqttc.publish("alarm/homenowdebug",str(response))
-
-            if response.count("Destination host unreachable")==retries or "0 received" in response or 'Request timed out.' in response:
-                #log_and_print(f"DOWN {ip} Ping Unsuccessful, Host is DOWN.")
-                not_home.add(name)
-            else:
-                #log_and_print(f"UP {ip} Ping Successful, Host is UP!")
-                home.add(name)
-        except:
-            log_and_print("Ping for " + name + " failed, which we count as not on network")
-            not_home.add(name)
-        
+    home, not_home, details = check_presence(c)
+    mqttc.publish("alarm/homenowdebug",str(details))
     return home, not_home
 
 def email_helper(sender_email, receiver_email, subject, message, smtp_server, smtp_port, smtp_username, smtp_password):
@@ -206,6 +182,32 @@ def on_force(client, userdata, msg):
         log_and_print("seconds since last exit: "+str(int(time.time())-(last_exit)))
         log_and_print("seconds since last sensor: "+str(int(time.time())-(last_sensor)))
 
+def notify_arrival(arrived, home, not_home):
+    #tell whoever wants to know that these people are now home
+    for person in c["people"]:
+        if (person["name"] in arrived):
+
+            message = person["name"] + ' is home'
+            message += "\r\n" + "home: "+str(home)
+            message += "\r\n" + "not_home: "+str(not_home)
+            message += "\r\n" + "date: "+f"{datetime.datetime.now():%Y-%m-%d}"
+            message += "\r\n" + "time: "+str(datetime.datetime.now().time())
+
+            log_and_print("Message:\r\n" + message)
+
+            for notify in c["people"]:
+                if (person["name"] in notify["notify_if_home"]):
+
+                    log_and_print("home = "+str(home))
+
+                    if (notify["send_email"]):
+                        log_and_print("sending email to " + notify["name"] + " at " + notify["email"])
+                        send_email(notify["email"],'Home Alarm System - ' + person["name"] + ' is home',message)
+
+                    if (notify["send_text"]):
+                        log_and_print("sending text to " + notify["name"] + " at " + notify["phone"])
+                        send_text(notify["phone"],message.replace("\r\n"," | "))
+
 def on_homenow(client, userdata, msg):
     global last_exit
     global home
@@ -240,8 +242,14 @@ def on_homenow(client, userdata, msg):
         if someone_is_home_previous == latest_is_home:
             if (someone_is_home != latest_is_home):
                 
+                was_home = someone_is_home
                 someone_is_home = latest_is_home
                 change = True
+
+                #arrival missed by the ping at the door (phone not on wifi yet) - notify now
+                if (someone_is_home and not was_home):
+                    log_and_print("Late arrival detected via homenow")
+                    notify_arrival(home, home, not_home)
 
                 if (someone_is_home):
                     log_and_print("Someone was home 2 minutes in a row, disarming")
@@ -299,34 +307,8 @@ def on_sensor(client, userdata, msg):
         someone_is_home = True
         someone_is_home_previous = True
 
-        #react to any changes
-        for person in c["people"]:
-            if (person["name"] in home):
+        notify_arrival(home, home, not_home)
 
-                message = person["name"] + ' is home'
-                message += "\r\nhome: "+str(home)
-                message += "\r\nnot_home: "+str(not_home)
-                message += "\r\ndate: "+f"{datetime.datetime.now():%Y-%m-%d}"
-                message += "\r\ntime: "+str(datetime.datetime.now().time())
-
-                log_and_print("Message:\r\n" + message)
-
-                #noone was home now this person is! Do we need to tell anyone?
-                for notify in c["people"]:
-                    if (person["name"] in notify["notify_if_home"]):
-
-                        log_and_print("home = "+str(home))
-
-                        if (notify["send_email"]):
-                            log_and_print("sending email to " + notify["name"] + " at " + notify["email"])
-                            mqttc.publish("alarm/log","sending email to " + notify["name"] + " at " + notify["email"])
-                            send_email(notify["email"],'Home Alarm System - ' + person["name"] + ' is home',message)
-                            
-                        if (notify["send_text"]):
-                            log_and_print("sending text to " + notify["name"] + " at " + notify["email"])                           
-                            mqttc.publish("alarm/log","sending text to " + notify["name"] + " at " + notify["phone"])
-                            send_text(notify["phone"],message.replace("\r\n"," | "))
-    
     #make up and MQTT the message anyway
     message = "Source: " + msg.topic
     message += "\r\nSensor: "+ sensor_name

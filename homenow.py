@@ -6,6 +6,7 @@ import json
 import datetime
 import smtplib
 import time
+from presence import check_presence
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -20,33 +21,8 @@ def log_and_print(message):
         log_file.close()
 
 def are_we_home():
-
-    home = set()
-    not_home = set()
-    retries = 4
-
-    for person in c["people"]:
-        name = person["name"]
-        ip = person["ip"]
-        try:
-            print("Looking for "+name)
-            if ("Linux" in str(platform.system())):
-                response =  str(subprocess.Popen(['ping', '-c '+str(retries), ip], stdout=subprocess.PIPE).communicate()[0])
-            else:
-                response = str(check_output(f"ping -n {retries} {ip}"))
-
-            mqttc.publish("alarm/homenowdebug",str(response))
-
-            if response.count("Destination host unreachable")==retries or "0 received" in response or 'Request timed out.' in response:
-                #log_and_print(f"DOWN {ip} Ping Unsuccessful, Host is DOWN.")
-                not_home.add(name)
-            else:
-                #log_and_print(f"UP {ip} Ping Successful, Host is UP!")
-                home.add(name)
-        except:
-            log_and_print("Ping for " + name + " failed, which we count as not on network")
-            not_home.add(name)
-        
+    home, not_home, details = check_presence(c)
+    mqttc.publish("alarm/homenowdebug",str(details))
     return home, not_home
 
 # The callback for when the client receives a CONNACK response from the server.
