@@ -6,6 +6,7 @@ import json
 import datetime
 import smtplib
 import time
+import threading
 from presence import check_presence
 import os
 from os.path import isfile, join
@@ -23,6 +24,9 @@ not_home = set()
 last_exit = int(time.time()) #we're gonna startup listening for devices
 last_sensor = int(time.time()) #we're gonna startup listening for devices
 last_log_cleanup = None
+last_homenow = time.time() #last time we heard from the homenow service (startup counts as a grace period)
+homenow_silent = False
+homenow_lock = threading.Lock()
 
 #-------------------------------------------------------------------------------------
 # FUNCTION DEFINITIONS
@@ -223,6 +227,33 @@ def notify_arrival(arrived, home, not_home):
                         log_and_print("sending text to " + notify["name"] + " at " + notify["phone"])
                         send_text(notify["phone"],message.replace("\r\n"," | "))
 
+def notify_everyone(subject, message):
+    #email/text everyone who gets sensor alerts
+    for person in c["people"]:
+        if (person["send_email"]):
+            send_email(person["email"], subject, message)
+        if (person["send_text"]):
+            send_text(person["phone"], message.replace("\r\n"," | "))
+
+def homenow_watchdog():
+    #runs in its own thread: callbacks only fire when messages arrive, so silence needs a timer
+    global homenow_silent
+    limit = c.get("homenow_silent_seconds", 300)
+    while True:
+        time.sleep(30)
+        try:
+            silent_for = int(time.time() - last_homenow)
+            with homenow_lock:
+                alert = (silent_for > limit and not homenow_silent)
+                if alert:
+                    homenow_silent = True
+            if alert:
+                message = "No homenow update for " + str(silent_for//60) + " minutes. The alarm may not arm when you leave until the homenow service is back."
+                log_and_print("WARNING: " + message)
+                notify_everyone("Home Alarm System - homenow silent", message)
+        except Exception as e:
+            print("homenow watchdog error: " + repr(e))
+
 def parse_homenow(payload):
     #homenow publishes a JSON list of names, e.g. ["Leon", "Chrissy"] ([] = no-one home)
     text = payload.decode("utf-8", errors="replace").strip()
@@ -244,7 +275,18 @@ def on_homenow(client, userdata, msg):
     global not_home
     global someone_is_home
     global someone_is_home_previous
+    global last_homenow
+    global homenow_silent
     since = int(time.time()-last_exit)
+
+    last_homenow = time.time() #any message counts as a sign of life
+
+    with homenow_lock:
+        recovered = homenow_silent
+        homenow_silent = False
+    if (recovered):
+        log_and_print("homenow is back")
+        notify_everyone("Home Alarm System - homenow is back", "homenow updates have resumed.")
 
     names = parse_homenow(msg.payload)
 
@@ -398,8 +440,9 @@ if (len(home) > 0):
     someone_is_home = True
     someone_is_home_previous = True
 
+threading.Thread(target=homenow_watchdog, daemon=True).start()
+
 # Blocking call that processes network traffic, dispatches callbacks and
-# handles reconnecting.
-# Other loop*() functions are available that give a threaded interface and a
-# manual interface.
+# handles reconnecting. Kept on the main thread on purpose: if a callback raises,
+# the process exits and systemd restarts it (loop_start() would silently lose the thread).
 mqttc.loop_forever()

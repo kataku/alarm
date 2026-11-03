@@ -7,6 +7,8 @@ import datetime
 import smtplib
 import time
 from presence import check_presence
+import sdnotify
+import sys
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -68,7 +70,13 @@ home,not_home = are_we_home()
 noones_home=False
 update_people()
 
+sdnotify.notify("READY=1") #tell systemd we've started (Type=notify)
+disconnected_loops = 0
+
 while(1):
+
+    #tell systemd we're alive - if this stops for WatchdogSec it restarts us
+    sdnotify.notify("WATCHDOG=1")
 
     #check for phones by ip
     home,not_home = are_we_home()
@@ -77,4 +85,15 @@ while(1):
 
     #update state variables
     update_people()
+
+    #can't reach the broker for ~5 minutes (or mqtt's background thread has died) - exit so systemd restarts us
+    if (mqttc.is_connected()):
+        disconnected_loops = 0
+    else:
+        disconnected_loops += 1
+        log_and_print("Not connected to MQTT broker ("+str(disconnected_loops)+")")
+        if (disconnected_loops >= 5):
+            log_and_print("Still not connected, exiting so we get restarted")
+            sys.exit(1)
+
     time.sleep(60)

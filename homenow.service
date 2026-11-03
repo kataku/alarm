@@ -5,7 +5,9 @@
  User=root
  WorkingDirectory=/opt/alarm
  ExecStart=/usr/bin/python3 /opt/alarm/homenow.py
+ Type=notify
  Restart=always
+ WatchdogSec=180
 
 [Install]
  WantedBy=multi-user.target

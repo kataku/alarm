@@ -73,6 +73,21 @@ Notes:
 - `alarm/homenowdebug` publishes how each person was detected, e.g. `{'John': 'ping', 'Doe': 'arp'}` (`none` = not found).
 - You get an "X is home" notification either when the exit sensor sees their phone, or - if the phone wasn't on wifi yet - a minute or two later when homenow sees it (`Late arrival detected via homenow` in the log).
 
+## Watching the watcher
+
+If `homenow` goes quiet the alarm can't arm itself when you leave, so there are two safeguards:
+
+- `main.py` expects an `alarm/homenow` message every minute or so. If nothing arrives for `homenow_silent_seconds` (default 300) it emails/texts everyone once ("homenow silent"), and again when updates resume ("homenow is back").
+- `homenow.service` is `Type=notify` with `WatchdogSec=180`: `homenow.py` tells systemd it's alive on every loop (see `sdnotify.py`) and systemd restarts it if it hangs. `homenow.py` also exits (so systemd restarts it) if it can't stay connected to the MQTT broker for about 5 minutes.
+
+After changing a `.service` file, reinstall it:
+
+```
+sudo cp homenow.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart homenow
+```
+
 ## Testing
 
 ```
