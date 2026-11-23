@@ -5,7 +5,13 @@
 #include <PubSubClient.h>
 #include <ESP8266WiFi.h>
 #include <Preferences.h>
+#include <time.h>
 #include "arduino_secrets.h"
+
+// UK time with automatic BST/GMT switching. Change the string for another zone.
+#define TZ_INFO "GMT0BST,M3.5.0/1,M10.5.0"
+#define AUTO_DISABLE_HOUR 9
+#define AUTO_DISABLE_MIN  0
 
 ///////please enter your sensitive data in the Secret tab/arduino_secrets.h
 const char ssid[]     = WIFI_SSID;        // your network SSID
@@ -23,6 +29,7 @@ unsigned long since_reconnect = 0;
 unsigned long reset_after = 86400000;//24hrs in millis
 unsigned long message_shown_at = 0;
 unsigned long message_timeout_ms = 5000;
+int lastAutoDisableDay = -1; // tm_yday of last auto-disable, so it fires once a day
 
 int sensorListSize = 28;
 int ids[28];
@@ -104,6 +111,29 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
+void checkAutoDisable(){
+  time_t now = time(nullptr);
+  if (now < 1700000000) return; //NTP not synced yet
+
+  struct tm t;
+  localtime_r(&now, &t);
+
+  if (armed && t.tm_hour == AUTO_DISABLE_HOUR && t.tm_min == AUTO_DISABLE_MIN
+      && t.tm_yday != lastAutoDisableDay){
+    lastAutoDisableDay = t.tm_yday;
+    armed = false;
+    triggered = false;
+    digitalWrite(D8, LOW);
+    preferences.begin("alarm", false);
+    preferences.putBool("armed", false);
+    preferences.end();
+    Serial.println("Auto-disabled at scheduled time");
+    showMessage("Disabled");
+    message_shown_at = millis();
+    message_timeout_ms = 5000;
+  }
+}
+
 void dismissMessage(){
   display.clearDisplay();
   display.display();
@@ -159,6 +189,7 @@ void loop() {
   }
 
   check_services();
+  checkAutoDisable();
 
   //call poll() regularly to allow the library to send MQTT keep alives which
   // avoids being disconnected by the broker
@@ -191,8 +222,9 @@ void setup() {
   boot_millis = millis();
 
   initWiFi();
+  configTime(TZ_INFO, "pool.ntp.org", "time.nist.gov");
   initMQTT();
-  
+
   Wire.begin(I2C_SDA, I2C_SCL);
   // initialize the OLED object
   if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
